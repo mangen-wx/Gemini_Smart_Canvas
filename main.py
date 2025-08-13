@@ -12,7 +12,7 @@ from astrbot.api.message_components import Image
 from astrbot.api.star import Context, Star, register
 
 
-@register("Gemini_Smart_Canvas", "沐沐沐倾丶", "Gemini智能绘图", "1.0.0")
+@register("Gemini_Smart_Canvas", "沐沐沐倾", "Gemini智能绘图", "1.0.0")
 class GeminiImageGenerator(Star):
     """
     Gemini 图片生成与编辑插件。
@@ -517,3 +517,4 @@ class GeminiImageGenerator(Star):
             except Exception as e:
                 logger.warning(f"清理临时目录失败: {e}")
         logger.info("Gemini智能绘图插件已成功停用。")
+
