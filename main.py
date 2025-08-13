@@ -12,7 +12,7 @@ from astrbot.api.message_components import Image
 from astrbot.api.star import Context, Star, register
 
 
-@register("Gemini_Smart_Canvas", "沐沐沐倾丶", "Gemini智能绘图", "1.0.0") # 确保这里没有 'description' 参数
+@register("Gemini_Smart_Canvas", "沐沐沐倾", "Gemini智能绘图", "1.0.0") 
 class GeminiImageGenerator(Star):
     """
     Gemini 图片生成与编辑插件。
@@ -73,7 +73,7 @@ class GeminiImageGenerator(Star):
         """
         if not self.api_keys:
             return None
-        return self.api_keys
+        return self.api_keys[0]
 
     async def _send_api_request(self, endpoint: str, payload: dict) -> dict:
         """
@@ -105,7 +105,8 @@ class GeminiImageGenerator(Star):
         image_url = None
 
         if "candidates" in data and len(data["candidates"]) > 0:
-            for part in data["candidates"]["content"]["parts"]:
+            # 修正：data["candidates"]是一个列表，需要访问其第一个元素
+            for part in data["candidates"][0]["content"]["parts"]:
                 if "inlineData" in part and "data" in part["inlineData"]:
                     base64_str = part["inlineData"]["data"].replace("\n", "").replace("\r", "")
                     image_data = base64.b64decode(base64_str)
@@ -414,7 +415,7 @@ class GeminiImageGenerator(Star):
         # 优化正则表达式，使其更简洁和通用
         # 匹配 Markdown, HTML, BBCode 或直接的图片URL
         match = re.search(
-            r'(?:!$$.*?$$$(https?://[^\s$]+)\)|<img[^>]*src=["\'](https?://[^"\'\s]+?)["\']|\[img\](https?://[^\[\]\s]+?)$$/img$$|(https?://\S+\.(?:png|jpg|jpeg|gif|webp)))',
+            r'(?:!\[.*?\]\((https?://[^\s\)]+)\)|<img[^>]*src=["\'](https?://[^"\'\s]+?)["\']|\[img\](https?://[^\[\]\s]+?)\[/img\]|(https?://\S+\.(?:png|jpg|jpeg|gif|webp)))',
             text_content,
             re.IGNORECASE
         )
@@ -488,8 +489,9 @@ class GeminiImageGenerator(Star):
         data = await self._send_api_request(endpoint, payload)
 
         if "candidates" in data and len(data["candidates"]) > 0:
+            # 修正：data["candidates"]是一个列表，需要访问其第一个元素
             full_response_text = ""
-            for part in data["candidates"]["content"]["parts"]:
+            for part in data["candidates"][0]["content"]["parts"]:
                 if "text" in part:
                     full_response_text += part["text"].strip()
 
@@ -516,4 +518,4 @@ class GeminiImageGenerator(Star):
                 logger.info(f"插件卸载完成：已清理临时目录 {self.save_dir}")
             except Exception as e:
                 logger.warning(f"清理临时目录失败: {e}")
-    logger.info("Gemini 文生图插件已停用")
+        logger.info("Gemini智能绘图插件已成功停用。") # 修正：移除末尾的反引号
