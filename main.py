@@ -12,7 +12,7 @@ from astrbot.api.message_components import Image
 from astrbot.api.star import Context, Star, register
 
 
-@register("Gemini_Smart_Canvas", "沐沐沐倾", "Gemini智能绘图", "1.0.0") 
+@register("Gemini_Smart_Canvas", "沐沐沐倾丶", "Gemini智能绘图", "1.0.0")
 class GeminiImageGenerator(Star):
     """
     Gemini 图片生成与编辑插件。
@@ -105,7 +105,6 @@ class GeminiImageGenerator(Star):
         image_url = None
 
         if "candidates" in data and len(data["candidates"]) > 0:
-            # 修正：data["candidates"]是一个列表，需要访问其第一个元素
             for part in data["candidates"][0]["content"]["parts"]:
                 if "inlineData" in part and "data" in part["inlineData"]:
                     base64_str = part["inlineData"]["data"].replace("\n", "").replace("\r", "")
@@ -142,7 +141,7 @@ class GeminiImageGenerator(Star):
                     os.remove(temp_download_path)
                     logger.debug(f"已清理临时下载文件: {temp_download_path}")
         else:
-            return None # 如果没有图片数据也没有URL，返回None
+            return None
 
     async def _call_gemini_image_api(self, prompt: str, api_key: str, image_base64: Optional[str] = None) -> Optional[bytes]:
         """
@@ -199,7 +198,7 @@ class GeminiImageGenerator(Star):
         return await self._call_gemini_image_api(prompt, current_key, image_base64)
 
     @filter.command("gemini_image", alias={"文生图"})
-    async def generate_image(self, event: AstrMessageEvent, prompt: str) -> AsyncGenerator[Comp.MessageComponent, None]:
+    async def generate_image(self, event: AstrMessageEvent, prompt: str) -> AsyncGenerator[Comp.BaseMessageComponent, None]:
         """
         根据文本描述生成图片。
         该方法会根据配置决定是否扩展用户提示词，并结合反向提示词进行图片生成。
@@ -238,7 +237,7 @@ class GeminiImageGenerator(Star):
                     prompt_to_send_to_model += f", avoid {self.default_negative_prompt}"
             else:
                 logger.info("提示词增强功能已禁用，将直接使用用户原始提示词，不添加任何额外提示词。")
-                prompt_to_send_to_model = prompt # 禁用增强时，只用原始提示词
+                prompt_to_send_to_model = prompt
             
             logger.info(f"发送给图片模型的最终提示词: '{prompt_to_send_to_model}'")
             yield event.plain_result("正在生成图片，请稍候...")
@@ -273,7 +272,7 @@ class GeminiImageGenerator(Star):
                     logger.warning(f"清理临时图片文件失败: {e}")
 
     @filter.command("gemini_edit", alias={"图编辑"})
-    async def edit_image(self, event: AstrMessageEvent, prompt: str) -> AsyncGenerator[Comp.MessageComponent, None]:
+    async def edit_image(self, event: AstrMessageEvent, prompt: str) -> AsyncGenerator[Comp.BaseMessageComponent, None]:
         """
         仅支持：引用图片后发送指令编辑图片。
         编辑时只使用用户提供的提示词，不进行任何增强。
@@ -307,7 +306,7 @@ class GeminiImageGenerator(Star):
                                  "- \"让人物穿上红色的衣服\"\n"
                                  "- \"把天空变成蓝色\"\n"
                                  "- \"移除图片中的文字\"")
-    async def edit_image_tool(self, event: AstrMessageEvent, prompt: str) -> AsyncGenerator[Comp.MessageComponent, None]:
+    async def edit_image_tool(self, event: AstrMessageEvent, prompt: str) -> AsyncGenerator[Comp.BaseMessageComponent, None]:
         """
         LLM工具接口：编辑现有图片。
         Args:
@@ -338,7 +337,7 @@ class GeminiImageGenerator(Star):
 
     @filter.llm_tool(name="generate_image",
                      description="根据文本描述生成图片，当你需要生成图片时请使用此工具。")
-    async def generate_image_tool(self, event: AstrMessageEvent, prompt: str) -> AsyncGenerator[Comp.MessageComponent, None]:
+    async def generate_image_tool(self, event: AstrMessageEvent, prompt: str) -> AsyncGenerator[Comp.BaseMessageComponent, None]:
         """
         LLM工具接口：根据文本描述生成图片。
         Args:
@@ -368,7 +367,7 @@ class GeminiImageGenerator(Star):
 
     async def _process_image_edit(
         self, event: AstrMessageEvent, prompt: str, image_path: str
-    ) -> AsyncGenerator[Comp.MessageComponent, None]:
+    ) -> AsyncGenerator[Comp.BaseMessageComponent, None]:
         """
         处理图片编辑的核心逻辑。
         """
@@ -415,7 +414,7 @@ class GeminiImageGenerator(Star):
         # 优化正则表达式，使其更简洁和通用
         # 匹配 Markdown, HTML, BBCode 或直接的图片URL
         match = re.search(
-            r'(?:!\[.*?\]\((https?://[^\s\)]+)\)|<img[^>]*src=["\'](https?://[^"\'\s]+?)["\']|\[img\](https?://[^\[\]\s]+?)\[/img\]|(https?://\S+\.(?:png|jpg|jpeg|gif|webp)))',
+            r'(?:!\[.*?\]\((https?://[^\s\)]+)\)|<img[^>]*src="\' [<sup>1</sup>](https?://[^"\'\s]+?)["\']|\img\ [<sup>2</sup>](https?://[^\[\]\s]+?)\[/img\]|(https?://\S+\.(?:png|jpg|jpeg|gif|webp)))',
             text_content,
             re.IGNORECASE
         )
@@ -489,7 +488,6 @@ class GeminiImageGenerator(Star):
         data = await self._send_api_request(endpoint, payload)
 
         if "candidates" in data and len(data["candidates"]) > 0:
-            # 修正：data["candidates"]是一个列表，需要访问其第一个元素
             full_response_text = ""
             for part in data["candidates"][0]["content"]["parts"]:
                 if "text" in part:
@@ -504,7 +502,7 @@ class GeminiImageGenerator(Star):
                 return positive_prompt
         
         logger.warning(f"Gemini文本模型API响应中缺少'candidates'或文本部分，或解析失败: {data}")
-        return None # 返回None表示未能成功获取扩展提示词
+        return None
 
     async def terminate(self):
         """
@@ -518,4 +516,4 @@ class GeminiImageGenerator(Star):
                 logger.info(f"插件卸载完成：已清理临时目录 {self.save_dir}")
             except Exception as e:
                 logger.warning(f"清理临时目录失败: {e}")
-        logger.info("Gemini智能绘图插件已成功停用。") # 修正：移除末尾的反引号
+        logger.info("Gemini智能绘图插件已成功停用。")
