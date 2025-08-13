@@ -516,4 +516,4 @@ class GeminiImageGenerator(Star):
                 logger.info(f"插件卸载完成：已清理临时目录 {self.save_dir}")
             except Exception as e:
                 logger.warning(f"清理临时目录失败: {e}")
-        logger.info("Gemini智能绘图插件已成功停用。") # 修正：移除末尾的反引号
+        logger.info("Gemini智能绘图插件已成功停用") 
