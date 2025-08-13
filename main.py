@@ -2,7 +2,7 @@ import base64
 import os
 import uuid
 import re
-from typing import Optional, AsyncGenerator
+# 移除了 typing 模块的导入，因为所有类型提示都将被移除
 
 import aiohttp
 import astrbot.api.message_components as Comp
@@ -19,7 +19,7 @@ class GeminiImageGenerator(Star):
     提供文生图和图生图功能，支持提示词扩展和自定义反向提示词。
     """
 
-    def __init__(self, context: Context, config: AstrBotConfig):
+    def __init__(self, context, config): # 移除类型提示
         """
         插件初始化，加载配置并设置必要的资源。
         """
@@ -29,17 +29,19 @@ class GeminiImageGenerator(Star):
         logger.info("Gemini智能绘图插件初始化成功，开始加载配置...")
 
         self.api_keys = self.config.get("gemini_api_keys", [])
-        if not self.api_keys:
-            logger.error("错误：未检测到Gemini API密钥配置，请检查插件设置。")
+        # 恢复原始脚本的密钥轮换逻辑
+        self.current_key_index = 0
 
         # 初始化图片临时存储目录
         plugin_dir = os.path.dirname(__file__)
         self.save_dir = os.path.join(plugin_dir, "temp_images")
-        os.makedirs(self.save_dir, exist_ok=True) # 使用 exist_ok=True 避免重复创建错误
-        logger.info(f"图片临时存储目录已准备就绪: {self.save_dir}")
+        # 恢复原始脚本的目录创建逻辑
+        if not os.path.exists(self.save_dir):
+            os.makedirs(self.save_dir)
+            logger.info(f"已创建图片临时目录: {self.save_dir}")
 
         # 加载API基础URL，并确保格式正确
-        self.api_base_url = self._normalize_api_base_url(
+        self.api_base_url = self._normalize_api_base_url( # _normalize_api_base_url 函数本身也需要移除类型提示
             self.config.get("api_base_url", "https://generativelanguage.googleapis.com")
         )
 
@@ -57,7 +59,7 @@ class GeminiImageGenerator(Star):
         self.default_negative_prompt = self.config.get("default_negative_prompt", "")
         self.prompt_expansion_template = self.config.get("prompt_expansion_template", "")
 
-    def _normalize_api_base_url(self, url: str) -> str:
+    def _normalize_api_base_url(self, url): # 移除类型提示
         """规范化API基础URL，确保以https://开头且不以/结尾。"""
         url = url.strip()
         if not url.startswith("https://"):
@@ -66,16 +68,23 @@ class GeminiImageGenerator(Star):
             url = url[:-1]
         return url
 
-    def _get_current_api_key(self) -> Optional[str]:
+    def _get_current_api_key(self): # 移除类型提示
         """
         获取当前使用的 API 密钥。
-        始终返回列表中的第一个密钥。
+        恢复原始脚本的密钥轮换逻辑
         """
         if not self.api_keys:
             return None
-        return self.api_keys[0]
+        return self.api_keys[self.current_key_index]
 
-    async def _send_api_request(self, endpoint: str, payload: dict) -> dict:
+    def _switch_next_api_key(self): # 恢复原始脚本的密钥轮换逻辑
+        """切换到下一个 API 密钥"""
+        if not self.api_keys:
+            return
+        self.current_key_index = (self.current_key_index + 1) % len(self.api_keys)
+        logger.info(f"已切换到下一个 API 密钥（索引：{self.current_key_index}）")
+
+    async def _send_api_request(self, endpoint, payload): # 移除类型提示
         """
         通用异步发送API请求的方法。
         """
@@ -97,7 +106,7 @@ class GeminiImageGenerator(Star):
                 logger.error(f"异步API请求过程中发生未知错误: {e}")
                 raise Exception(f"API请求发生未知错误: {e}")
 
-    async def _parse_image_response(self, data: dict, temp_prefix: str) -> Optional[bytes]:
+    async def _parse_image_response(self, data, temp_prefix): # 移除类型提示
         """
         解析Gemini图片API响应，提取图片数据或从URL下载图片。
         """
@@ -112,7 +121,8 @@ class GeminiImageGenerator(Star):
                     logger.debug("成功从inlineData中提取图片数据。")
                     break
                 elif "text" in part:
-                    extracted_url = self._extract_image_url_from_text(part["text"])
+                    # 修正：这里需要await异步函数
+                    extracted_url = await self._extract_image_url_from_text(part["text"])
                     if extracted_url:
                         image_url = extracted_url
                         logger.debug(f"在文本部分发现图片URL: {image_url}")
@@ -143,7 +153,7 @@ class GeminiImageGenerator(Star):
         else:
             return None
 
-    async def _call_gemini_image_api(self, prompt: str, api_key: str, image_base64: Optional[str] = None) -> Optional[bytes]:
+    async def _call_gemini_image_api(self, prompt, api_key, image_base64 = None): # 移除类型提示
         """
         调用Gemini图片生成/编辑API的通用方法。
         """
@@ -169,36 +179,72 @@ class GeminiImageGenerator(Star):
         data = await self._send_api_request(endpoint, payload)
         return await self._parse_image_response(data, "downloaded_image")
 
-    async def _generate_image_with_retry(self, prompt: str) -> Optional[bytes]:
-        """
-        带重试逻辑的图片生成方法。
-        """
-        current_key = self._get_current_api_key()
-        if not current_key:
-            raise Exception("未配置有效的Gemini API密钥。")
+    async def _generate_image_with_retry(self, prompt): # 移除类型提示
+        """带重试逻辑的图片生成方法"""
+        max_attempts = len(self.api_keys)
+        attempts = 0
 
-        logger.info(f"尝试生成图片（使用密钥：{current_key[:5]}...）")
-        return await self._call_gemini_image_api(prompt, current_key)
+        while attempts < max_attempts:
+            current_key = self._get_current_api_key()
+            if not current_key:
+                break
 
-    async def _edit_image_with_retry(self, prompt: str, image_path: str) -> Optional[bytes]:
-        """
-        带重试逻辑的图片编辑方法。
-        """
-        current_key = self._get_current_api_key()
-        if not current_key:
-            raise Exception("未配置有效的Gemini API密钥。")
+            logger.info(
+                f"尝试生成图片（密钥索引：{self.current_key_index}，尝试次数：{attempts + 1}/{max_attempts}）"
+            )
 
-        logger.info(f"尝试编辑图片（使用密钥：{current_key[:5]}...）")
-        
+            try:
+                return await self._call_gemini_image_api(prompt, current_key)
+            except Exception as e:
+                attempts += 1
+                logger.error(f"第{attempts}次尝试失败：{str(e)}")
+                if attempts < max_attempts:
+                    self._switch_next_api_key()
+                else:
+                    logger.error("所有API密钥均尝试失败")
+
+        return None
+
+    async def _edit_image_with_retry(self, prompt, image_path): # 移除类型提示
+        """带重试逻辑的图片编辑方法"""
+        max_attempts = len(self.api_keys)
+        attempts = 0
+
         # 读取图片并转换为Base64
-        with open(image_path, "rb") as f:
-            image_bytes = f.read()
-            image_base64 = base64.b64encode(image_bytes).decode("utf-8").replace("\n", "").replace("\r", "")
+        image_base64 = None
+        try:
+            with open(image_path, "rb") as f:
+                image_bytes = f.read()
+            image_base64 = base64.b64encode(image_bytes).decode("utf-8")
+            logger.debug(f"已将图片 {image_path} 转换为Base64编码。")
+        except Exception as e:
+            logger.error(f"读取或编码图片失败: {e}")
+            raise Exception(f"无法处理图片文件: {e}")
 
-        return await self._call_gemini_image_api(prompt, current_key, image_base64)
+        while attempts < max_attempts:
+            current_key = self._get_current_api_key()
+            if not current_key:
+                break
+
+            logger.info(
+                f"尝试编辑图片（密钥索引：{self.current_key_index}，尝试次数：{attempts + 1}/{max_attempts}）"
+            )
+
+            try:
+                # 修正：调用 _call_gemini_image_api 并传入 Base64 编码的图片数据
+                return await self._call_gemini_image_api(prompt, current_key, image_base64=image_base64)
+            except Exception as e:
+                attempts += 1
+                logger.error(f"第{attempts}次尝试失败：{str(e)}")
+                if attempts < max_attempts:
+                    self._switch_next_api_key()
+                else:
+                    logger.error("所有API密钥均尝试失败")
+
+        return None
 
     @filter.command("gemini_image", alias={"文生图"})
-    async def generate_image(self, event: AstrMessageEvent, prompt: str) -> AsyncGenerator[Comp.BaseMessageComponent, None]:
+    async def generate_image(self, event, prompt): # 移除类型提示
         """
         根据文本描述生成图片。
         该方法会根据配置决定是否扩展用户提示词，并结合反向提示词进行图片生成。
@@ -272,7 +318,7 @@ class GeminiImageGenerator(Star):
                     logger.warning(f"清理临时图片文件失败: {e}")
 
     @filter.command("gemini_edit", alias={"图编辑"})
-    async def edit_image(self, event: AstrMessageEvent, prompt: str) -> AsyncGenerator[Comp.BaseMessageComponent, None]:
+    async def edit_image(self, event, prompt): # 移除类型提示
         """
         仅支持：引用图片后发送指令编辑图片。
         编辑时只使用用户提供的提示词，不进行任何增强。
@@ -296,112 +342,130 @@ class GeminiImageGenerator(Star):
         async for result in self._process_image_edit(event, final_prompt_for_model, image_path):
             yield result
 
-    @filter.llm_tool(name="edit_image") # 移除 description 参数
-    async def edit_image_tool(self, event: AstrMessageEvent, prompt: str) -> AsyncGenerator[Comp.BaseMessageComponent, None]:
-        """
-        LLM工具接口：编辑现有图片。
+    @filter.llm_tool(name="edit_image")
+    async def edit_image_tool(self, event, prompt): # 移除类型提示，并恢复原始文档字符串
+        """编辑现有图片。当你需要编辑图片时，请使用此工具。
+
         Args:
             prompt(string): 编辑描述（例如：把猫咪改成黑色）
         """
         if not self.api_keys:
-            yield event.plain_result("错误：插件未配置有效的Gemini API密钥。")
+            yield event.plain_result("错误：未配置任何 Gemini API 密钥")
             return
 
         if not prompt.strip():
-            yield event.plain_result("请提供图片编辑的具体描述，例如：把猫咪改成黑色。")
+            yield event.plain_result("请提供编辑描述（例如：把猫咪改成黑色）")
             return
 
         image_path = await self._extract_image_from_reply(event)
         if not image_path:
-            yield event.plain_result("未检测到引用的图片。请长按图片选择“回复”后，再发送编辑指令。")
+            yield event.plain_result(
+                "未找到图片，请先长按图片并点击“回复”，再输入编辑指令"
+            )
             return
 
-        # 图片编辑不进行任何增强，只使用用户原始提示词
-        final_prompt_for_model = prompt
-        logger.info("图片编辑功能不进行提示词增强，将直接使用用户原始提示词。")
-
-        logger.info(f"发送给图片编辑模型的最终提示词: '{final_prompt_for_model}'")
-        yield event.plain_result(f"正在编辑图片，请稍候...")
-        
-        async for result in self._process_image_edit(event, final_prompt_for_model, image_path):
+        async for result in self._process_image_edit(event, prompt, image_path):
             yield result
 
-    @filter.llm_tool(name="generate_image") # 移除 description 参数
-    async def generate_image_tool(self, event: AstrMessageEvent, prompt: str) -> AsyncGenerator[Comp.BaseMessageComponent, None]:
-        """
-        LLM工具接口：根据文本描述生成图片。
+    @filter.llm_tool(name="generate_image")
+    async def generate_image_tool(self, event, prompt): # 移除类型提示，并恢复原始文档字符串
+        """根据文本描述生成图片，当你需要生成图片时请使用此工具。
+
         Args:
             prompt(string): 图片描述文本（例如：画只猫）
         """
         async for result in self.generate_image(event, prompt):
             yield result
 
-    async def _extract_image_from_reply(self, event: AstrMessageEvent) -> Optional[str]:
-        """
-        从回复消息中提取图片并返回本地路径。
-        """
+    # 提取回复中图片
+    async def _extract_image_from_reply(self, event): # 移除类型提示
+        """从回复消息中提取图片并返回本地路径"""
         try:
             message_components = event.message_obj.message
+            reply_component = None
             for comp in message_components:
                 if isinstance(comp, Comp.Reply):
-                    for quoted_comp in comp.chain:
-                        if isinstance(quoted_comp, Comp.Image):
-                            image_path = await quoted_comp.convert_to_file_path()
-                            logger.debug(f"从回复中提取到图片并处理为本地路径：{image_path}")
-                            return image_path
-            logger.warning("未在回复消息中检测到图片组件。")
-            return None
+                    reply_component = comp
+                    logger.info(f"检测到回复消息（ID：{comp.id}），提取被引用图片")
+                    break
+
+            if not reply_component:
+                logger.warning("未检测到回复组件（用户未长按图片回复）")
+                return None
+
+            # 从回复的chain中提取Image组件
+            image_component = None
+            for quoted_comp in reply_component.chain:
+                if isinstance(quoted_comp, Comp.Image):
+                    image_component = quoted_comp
+                    logger.info(
+                        f"从回复中提取到图片组件（file：{image_component.file}）"
+                    )
+                    break
+
+            if not image_component:
+                logger.warning("回复中未包含图片组件")
+                return None
+
+            # 获取本地图片路径（自动处理下载/转换）
+            image_path = await image_component.convert_to_file_path()
+            logger.info(f"图片已处理为本地路径：{image_path}")
+            return image_path
+
         except Exception as e:
-            logger.error(f"提取引用图片失败: {e}", exc_info=True)
+            logger.error(f"提取图片失败: {str(e)}", exc_info=True)
             return None
 
+    # 统一的图片编辑处理逻辑
     async def _process_image_edit(
-        self, event: AstrMessageEvent, prompt: str, image_path: str
-    ) -> AsyncGenerator[Comp.BaseMessageComponent, None]:
-        """
-        处理图片编辑的核心逻辑。
-        """
+        self, event, prompt, image_path
+    ): # 移除类型提示
+        """处理图片编辑的核心逻辑"""
         save_path = None
         try:
+            yield event.plain_result("正在编辑图片，请稍等...")
+
+            # 调用带重试的编辑方法
+            # 修正：这里不再需要传入 current_key，因为它在 _edit_image_with_retry 内部获取
             image_data = await self._edit_image_with_retry(prompt, image_path)
 
             if not image_data:
-                yield event.plain_result("图片编辑失败：未能从API获取到图片数据。")
+                yield event.plain_result("编辑失败：所有API密钥均尝试失败")
                 return
 
+            # 保存并发送编辑后的图片
             save_path = os.path.join(self.save_dir, f"{uuid.uuid4()}_edited.png")
             with open(save_path, "wb") as f:
                 f.write(image_data)
 
-            logger.info(f"编辑后的图片已临时保存至: {save_path}")
             yield event.chain_result([Comp.Image.fromFileSystem(save_path)])
-            logger.info(f"图片编辑完成并发送。")
+            logger.info(f"图片编辑完成并发送，提示词: {prompt}")
 
         except Exception as e:
-            logger.error(f"图片编辑过程中发生异常: {e}", exc_info=True)
-            yield event.plain_result(f"图片编辑失败，错误信息: {e}")
+            logger.error(f"图片编辑出错：{str(e)}")
+            yield event.plain_result(f"图片编辑失败：{str(e)}")
 
         finally:
             # 清理临时文件
             if image_path and os.path.exists(image_path):
                 try:
                     os.remove(image_path)
-                    logger.info(f"已清理原始图片临时文件: {image_path}")
+                    logger.info(f"已删除原始图片临时文件：{image_path}")
                 except Exception as e:
-                    logger.warning(f"清理原始图片临时文件失败: {e}")
+                    logger.warning(f"删除原始图片失败：{str(e)}")
 
             if save_path and os.path.exists(save_path):
                 try:
                     os.remove(save_path)
-                    logger.info(f"已清理编辑后图片临时文件: {save_path}")
+                    logger.info(f"已删除编辑图临时文件：{save_path}")
                 except Exception as e:
-                    logger.warning(f"清理编辑后图片临时文件失败: {e}")
+                    logger.warning(f"删除编辑图失败：{str(e)}")
 
-    async def _extract_image_url_from_text(self, text_content: str) -> Optional[str]:
+    async def _extract_image_url_from_text(self, text_content): # 移除类型提示
         """
         辅助函数：从文本内容中提取图片URL，支持多种格式。
         """
-        # 优化正则表达式，使其更简洁和通用
+        # 修正：优化正则表达式，使其更简洁和通用
         # 匹配 Markdown, HTML, BBCode 或直接的图片URL
         match = re.search(
             r'(?:!\[.*?\]\((https?://[^\s\)]+)\)|<img[^>]*src=["\'](https?://[^"\'\s]+?)["\']|\[img\](https?://[^\[\]\s]+?)\[/img\]|(https?://\S+\.(?:png|jpg|jpeg|gif|webp)))',
@@ -418,7 +482,7 @@ class GeminiImageGenerator(Star):
         logger.debug("未在文本中提取到图片URL。")
         return None
 
-    async def _download_image_from_url(self, url: str, save_path: str):
+    async def _download_image_from_url(self, url, save_path): # 移除类型提示
         """
         从给定的URL下载图片并保存到指定路径。
         """
@@ -442,7 +506,7 @@ class GeminiImageGenerator(Star):
                 logger.error(f"下载图片时发生未知错误: {e}")
                 raise
 
-    async def _expand_prompt_with_gemini(self, original_prompt: str) -> Optional[str]:
+    async def _expand_prompt_with_gemini(self, original_prompt): # 移除类型提示
         """
         使用 Gemini 文本模型扩展提示词，只生成正向提示词。
         返回扩展后的正向提示词。
@@ -454,7 +518,7 @@ class GeminiImageGenerator(Star):
         logger.info(f"尝试扩展提示词（使用密钥：{current_key[:5]}...）")
         return await self._call_gemini_text_model(original_prompt, current_key)
 
-    async def _call_gemini_text_model(self, original_prompt: str, api_key: str) -> Optional[str]:
+    async def _call_gemini_text_model(self, original_prompt, api_key): # 移除类型提示
         """
         实际调用 Gemini 文本模型进行提示词扩展。
         返回扩展后的正向提示词（中文）。
