@@ -12,7 +12,7 @@ from astrbot.api.message_components import Image
 from astrbot.api.star import Context, Star, register
 
 
-@register("Gemini_Smart_Canvas", "沐沐沐倾丶", "Gemini智能绘图", "1.0.0") # 移除 description 参数
+@register("Gemini_Smart_Canvas", "沐沐沐倾丶", "Gemini智能绘图", "1.0.0") # 确保这里没有 'description' 参数
 class GeminiImageGenerator(Star):
     """
     Gemini 图片生成与编辑插件。
@@ -357,4 +357,223 @@ class GeminiImageGenerator(Star):
                     for quoted_comp in comp.chain:
                         if isinstance(quoted_comp, Comp.Image):
                             image_path = await quoted_comp.convert_to_file_path()
-           
+                            logger.debug(f"从回复中提取到图片并处理为本地路径：{image_path}")
+                            return image_path
+            logger.warning("未在回复消息中检测到图片组件。")
+            return None
+        except Exception as e:
+            logger.error(f"提取引用图片失败: {e}", exc_info=True)
+            return None
+
+    async def _process_image_edit(
+        self, event: AstrMessageEvent, prompt: str, image_path: str
+    ) -> AsyncGenerator[Comp.MessageComponent, None]:
+        """
+        处理图片编辑的核心逻辑。
+        """
+        save_path = None
+        try:
+            image_data = await self._edit_image_with_retry(prompt, image_path)
+
+            if not image_data:
+                yield event.plain_result("图片编辑失败：未能从API获取到图片数据。")
+                return
+
+            save_path = os.path.join(self.save_dir, f"{uuid.uuid4()}_edited.png")
+            with open(save_path, "wb") as f:
+                f.write(image_data)
+
+            logger.info(f"编辑后的图片已临时保存至: {save_path}")
+            yield event.chain_result([Comp.Image.fromFileSystem(save_path)])
+            logger.info(f"图片编辑完成并发送。")
+
+        except Exception as e:
+            logger.error(f"图片编辑过程中发生异常: {e}", exc_info=True)
+            yield event.plain_result(f"图片编辑失败，错误信息: {e}")
+
+        finally:
+            # 清理临时文件
+            if image_path and os.path.exists(image_path):
+                try:
+                    os.remove(image_path)
+                    logger.info(f"已清理原始图片临时文件: {image_path}")
+                except Exception as e:
+                    logger.warning(f"清理原始图片临时文件失败: {e}")
+
+            if save_path and os.path.exists(save_path):
+                try:
+                    os.remove(save_path)
+                    logger.info(f"已清理编辑后图片临时文件: {save_path}")
+                except Exception as e:
+                    logger.warning(f"清理编辑后图片临时文件失败: {e}")
+
+    async def _extract_image_url_from_text(self, text_content: str) -> Optional[str]:
+        """
+        辅助函数：从文本内容中提取图片URL，支持多种格式。
+        """
+        # 优化正则表达式，使其更简洁和通用
+        # 匹配 Markdown, HTML, BBCode 或直接的图片URL
+        match = re.search(
+            r'(?:!\[.*?\]\((https?://[^\s\)]+)\)|<img[^>]*src=["\'](https?://[^"\'\s]+?)["\']|\[img\](https?://[^\[\]\s]+?)\[/img\]|(https?://\S+\.(?:png|jpg|jpeg|gif|webp)))',
+            text_content,
+            re.IGNORECASE
+        )
+        if match:
+            # 返回第一个匹配到的URL组
+            for i in range(1, match.lastindex + 1):
+                url = match.group(i)
+                if url:
+                    logger.debug(f"提取到图片URL: {url}")
+                    return url
+        logger.debug("未在文本中提取到图片URL。")
+        return None
+
+    async def _download_image_from_url(self, url: str, save_path: str):
+        """
+        从给定的URL下载图片并保存到指定路径。
+        """
+        logger.info(f"尝试从URL下载图片: {url} 到 {save_path}")
+        async with aiohttp.ClientSession() as session:
+            try:
+                async with session.get(url) as response:
+                    response.raise_for_status()  # 检查HTTP状态码，如果不是2xx则抛出异常
+                    with open(save_path, "wb") as f:
+                        # 异步写入文件，分块读取以处理大文件
+                        while True:
+                            chunk = await response.content.read(1024)
+                            if not chunk:
+                                break
+                            f.write(chunk)
+                    logger.info(f"图片已成功从URL下载并保存到: {save_path}")
+            except aiohttp.ClientError as e:
+                logger.error(f"下载图片失败 (aiohttp error): {e}")
+                raise
+            except Exception as e:
+                logger.error(f"下载图片时发生未知错误: {e}")
+                raise
+
+    async def _expand_prompt_with_gemini(self, original_prompt: str) -> Optional[str]:
+        """
+        使用 Gemini 文本模型扩展提示词，只生成正向提示词。
+        返回扩展后的正向提示词。
+        """
+        current_key = self._get_current_api_key()
+        if not current_key:
+            raise Exception("未配置有效的Gemini API密钥。")
+
+        logger.info(f"尝试扩展提示词（使用密钥：{current_key[:5]}...）")
+        return await self._call_gemini_text_model(original_prompt, current_key)
+
+    async def _call_gemini_text_model(self, original_prompt: str, api_key: str) -> Optional[str]:
+        """
+        实际调用 Gemini 文本模型进行提示词扩展。
+        返回扩展后的正向提示词（中文）。
+        """
+        endpoint = f"{self.api_base_url}/v1beta/models/{self.text_model_name}:generateContent?key={api_key}"
+        logger.debug(f"正在向Gemini文本模型发送异步请求: {endpoint}")
+
+        # 使用配置中加载的 prompt_expansion_template，并替换占位符
+        llm_prompt = self.prompt_expansion_template.replace("{{original_prompt}}", original_prompt)
+
+        payload = {
+            "contents": [{"role": "user", "parts": [{"text": llm_prompt}]}],
+            "generationConfig": {
+                "temperature": 0.7,
+                "topP": 0.9,
+                "topK": 20,
+                "maxOutputTokens": 4096,
+            },
+        }
+
+        data = await self._send_api_request(endpoint, payload)
+
+        if "candidates" in data and len(data["candidates"]) > 0:
+            full_response_text = ""
+            for part in data["candidates"][0]["content"]["parts"]:
+                if "text" in part:
+                    full_response_text += part["text"].strip()
+
+            positive_match = re.search(r'Positive Prompt:\s*(.*)', full_response_text, re.DOTALL)
+
+            positive_prompt = positive_match.group(1).strip() if positive_match else ""
+
+            if positive_prompt:
+                logger.info(f"成功获取扩展正向提示词: {positive_prompt}")
+                return positive_prompt
+        
+        logger.warning(f"Gemini文本模型API响应中缺少'candidates'或文本部分，或解析失败: {data}")
+        return None # 返回None表示未能成功获取扩展提示词
+
+    async def terminate(self):
+        """
+        插件卸载时清理临时目录。
+        """
+        if os.path.exists(self.save_dir):
+            try:
+                for file in os.listdir(self.save_dir):
+                    os.remove(os.path.join(self.save_dir, file))
+                os.rmdir(self.save_dir)
+                logger.info(f"插件卸载完成：已清理临时目录 {self.save_dir}")
+            except Exception as e:
+                logger.warning(f"清理临时目录失败: {e}")
+        logger.info("Gemini智能绘图插件已成功停用。")```
+
+---
+
+### **`_conf_schema.json` 文件内容（保持不变）：**
+
+```json
+{
+  "gemini_api_keys": {
+    "description": "Gemini API 密钥列表（从 Google AI Studio 获取）",
+    "type": "list",
+    "hint": "前往 https://aistudio.google.com/ 生成 API Key，支持填写多个密钥以提高可用性",
+    "obvious_hint": true,
+    "items": {
+      "type": "string",
+      "description": "API 密钥"
+    },
+    "default": []
+  },
+  "api_base_url": {
+    "description": "Gemini API 基础 URL（可选，默认使用官方地址）",
+    "type": "string",
+    "hint": "如果需要自定义 API 地址，请填写完整 URL",
+    "default": "https://generativelanguage.googleapis.com"
+  },
+  "image_model_name": {
+    "description": "用于图片生成和编辑的图像模型名称",
+    "type": "string",
+    "hint": "例如：gemini-2.0-flash-preview-image-generation",
+    "default": "gemini-2.0-flash-preview-image-generation"
+  },
+  "enable_prompt_enhancement": {
+    "description": "是否启用提示词增强（自动扩展正向提示词和添加反向提示词）",
+    "type": "boolean",
+    "hint": "开启后，系统将自动扩展您的图片描述并添加预设的反向提示词；关闭则直接使用您的原始描述，不添加反向提示词。",
+    "default": true
+  },
+  "text_model_name": {
+    "description": "用于提示词扩展的文本生成模型名称（仅在启用提示词增强时有效）",
+    "type": "string",
+    "default": "gemini-2.5-flash"
+  },
+  "prompt_expansion_template": {
+    "description": "用于指导文本模型扩展正向提示词的模板（仅在启用提示词增强时有效）",
+    "type": "text",
+    "hint": "使用 {{original_prompt}} 作为用户原始描述的占位符。此模板将发送给文本模型以生成详细的正向提示词。",
+    "default": "你是一个专业的图片生成提示词扩展助手。请根据用户提供的简短描述，将其扩展为详细、富有创意且包含丰富细节的图片生成**正向提示词 (Positive Prompt)**。\n\n请严格按照以下格式输出，不要包含任何额外说明或对话内容：\nPositive Prompt: [这里是详细的图片生成正向提示词]\n\n请在扩展正向提示词时，确保其内容能够充分指导图像生成模型，使其生成高质量、符合预期的图像。考虑以下方面：\n1.  **主体细节**: 描述主体的具体特征、动作、表情、服装、材质、纹理等。\n2.  **环境/背景**: 场景的地点、时间、天气、光线（如柔和光、强对比光）、氛围、周围物体、景深等。\n3.  **风格/艺术性**: 艺术风格（如赛博朋克、印象派、写实、动漫风格、油画、水彩）、画质（如8K、超高清）、光影效果、色彩搭配、渲染方式（如3D渲染、数字绘画）。\n4.  **构图/视角**: 构图方式（如特写、全身照、广角、全景、对称构图）、视角（如俯视、仰视、平视）、景深。\n5.  **情绪/主题**: 图片想要表达的情绪、故事或主题。\n\n原始描述: '{{original_prompt}}'"
+  },
+  "fixed_positive_prefix": {
+    "description": "图片生成时强制添加的固定正向提示词前缀（仅在启用提示词增强时有效）",
+    "type": "string",
+    "hint": "这些提示词会始终添加到最终的正向提示词最前面，用于提高图片质量。",
+    "default": "high quality, masterpiece, best quality, photography, ultra highres, RAW photo, ultra-detailed, finely detailed, highres 8k wallpaper"
+  },
+  "default_negative_prompt": {
+    "description": "图片生成时默认添加的反向提示词（仅在启用提示词增强时有效）",
+    "type": "text",
+    "hint": "此内容会作为反向提示词添加到模型请求中，用于避免生成不希望出现的内容",
+    "default": "2boy, 2d, 2girl, 3d, 3d render, UI, aberrations, absent limbs, abstract, additional limbs, altered appendages, amputation, amputee, animate, anime, artstation, artwork, asymmetric, asymmetric ears, asymmetrical, autograph, bad anatomy, bad arms, bad composition, bad ears, bad eyes, bad face, bad hands, bad illustration, bad photo, bad photography, bad proportions, bad quality, banner, beyond the borders, black and white, blank background, body out of frame, boring background, branding, broken finger, broken hand, broken leg, broken wrist, cartoon, cg, cgi, childish, cinema 4d, cloned face, cloned head, collage, collapsed, collapsed eyeshadow, color aberration, combined appendages, conjoined, creative, cripple, cropped, cropped head, cross-eyed, cut off, deformed, deformed body features, deformed hands, deformed iris, deformed pupils, dehydrated, desiccated, deviant art, disconnected limb, disconnected limbs, disfigured, disgusting, dismembered, disproportionate, disproportioned, distorted, distortion, double face, draft, drawing, duplicate, duplicated features, elongated throat, error, extra arms, extra crus, extra digits, extra eyes, extra fingers, extra hands, extra legs, extra limbs, extra thigh, extra windows, fault, flaw, fused crus, fused face, fused feet, fused fingers, fused hands, fused thigh, geometry, grains, grainy, gross proportions, harsh lighting, hazy, horn, horror, huge eyes, identifying mark, improper scale, incorrect physiology, incorrect ratio, indistinct, jpeg, jpeg artifacts, kitsch, low quality, low res, low resolution, low saturation, macabre, malformed, malformed limbs, mark, misshapen, missing arms, missing fingers, missing hands, missing legs, mistake, morbid, mutilated, normal quality, octane render, off-screen, oil painting, out of focus, out of frame, out of frame double, outside the picture, overexposed, oversaturated, oversized eyes, painting, photoshop, picture frame, pixel, pixelated, poorly drawn face, poorly drawn feet, poorly drawn hands, poorly rendered hands, printed words, realistic photo, render, repellent, replicate, reproduce, revolting dimensions, rotten, script, shortened, sign, signature, sketch, split image, squint, storyboard, surreal, text, three crus, three feet, three hands, three legs, three thigh, tiling, too many fingers, trimmed, twisted, ugly, ugly eyes, ugly face, ugly fingers, unattractive, underexposed, unfocused, unnatural, unnatural pose, unreal, unreal engine, unrealistic, unrealistic skin texture, unsightly, username, video game, watermark, worst face, worst feet, worst quality, worst thigh, written language"
+  }
+}
