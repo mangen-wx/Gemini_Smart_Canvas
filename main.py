@@ -73,7 +73,7 @@ class GeminiImageGenerator(Star):
         """
         if not self.api_keys:
             return None
-        return self.api_keys[0]
+        return self.api_keys
 
     async def _send_api_request(self, endpoint: str, payload: dict) -> dict:
         """
@@ -105,7 +105,7 @@ class GeminiImageGenerator(Star):
         image_url = None
 
         if "candidates" in data and len(data["candidates"]) > 0:
-            for part in data["candidates"][0]["content"]["parts"]:
+            for part in data["candidates"]["content"]["parts"]:
                 if "inlineData" in part and "data" in part["inlineData"]:
                     base64_str = part["inlineData"]["data"].replace("\n", "").replace("\r", "")
                     image_data = base64.b64decode(base64_str)
@@ -414,7 +414,7 @@ class GeminiImageGenerator(Star):
         # 优化正则表达式，使其更简洁和通用
         # 匹配 Markdown, HTML, BBCode 或直接的图片URL
         match = re.search(
-            r'(?:!\[.*?\]\((https?://[^\s\)]+)\)|<img[^>]*src=["\'](https?://[^"\'\s]+?)["\']|\[img\](https?://[^\[\]\s]+?)\[/img\]|(https?://\S+\.(?:png|jpg|jpeg|gif|webp)))',
+            r'(?:!$$.*?$$$(https?://[^\s$]+)\)|<img[^>]*src=["\'](https?://[^"\'\s]+?)["\']|\[img\](https?://[^\[\]\s]+?)$$/img$$|(https?://\S+\.(?:png|jpg|jpeg|gif|webp)))',
             text_content,
             re.IGNORECASE
         )
@@ -489,7 +489,7 @@ class GeminiImageGenerator(Star):
 
         if "candidates" in data and len(data["candidates"]) > 0:
             full_response_text = ""
-            for part in data["candidates"][0]["content"]["parts"]:
+            for part in data["candidates"]["content"]["parts"]:
                 if "text" in part:
                     full_response_text += part["text"].strip()
 
@@ -516,64 +516,4 @@ class GeminiImageGenerator(Star):
                 logger.info(f"插件卸载完成：已清理临时目录 {self.save_dir}")
             except Exception as e:
                 logger.warning(f"清理临时目录失败: {e}")
-        logger.info("Gemini智能绘图插件已成功停用。")```
-
----
-
-### **`_conf_schema.json` 文件内容（保持不变）：**
-
-```json
-{
-  "gemini_api_keys": {
-    "description": "Gemini API 密钥列表（从 Google AI Studio 获取）",
-    "type": "list",
-    "hint": "前往 https://aistudio.google.com/ 生成 API Key，支持填写多个密钥以提高可用性",
-    "obvious_hint": true,
-    "items": {
-      "type": "string",
-      "description": "API 密钥"
-    },
-    "default": []
-  },
-  "api_base_url": {
-    "description": "Gemini API 基础 URL（可选，默认使用官方地址）",
-    "type": "string",
-    "hint": "如果需要自定义 API 地址，请填写完整 URL",
-    "default": "https://generativelanguage.googleapis.com"
-  },
-  "image_model_name": {
-    "description": "用于图片生成和编辑的图像模型名称",
-    "type": "string",
-    "hint": "例如：gemini-2.0-flash-preview-image-generation",
-    "default": "gemini-2.0-flash-preview-image-generation"
-  },
-  "enable_prompt_enhancement": {
-    "description": "是否启用提示词增强（自动扩展正向提示词和添加反向提示词）",
-    "type": "boolean",
-    "hint": "开启后，系统将自动扩展您的图片描述并添加预设的反向提示词；关闭则直接使用您的原始描述，不添加反向提示词。",
-    "default": true
-  },
-  "text_model_name": {
-    "description": "用于提示词扩展的文本生成模型名称（仅在启用提示词增强时有效）",
-    "type": "string",
-    "default": "gemini-2.5-flash"
-  },
-  "prompt_expansion_template": {
-    "description": "用于指导文本模型扩展正向提示词的模板（仅在启用提示词增强时有效）",
-    "type": "text",
-    "hint": "使用 {{original_prompt}} 作为用户原始描述的占位符。此模板将发送给文本模型以生成详细的正向提示词。",
-    "default": "你是一个专业的图片生成提示词扩展助手。请根据用户提供的简短描述，将其扩展为详细、富有创意且包含丰富细节的图片生成**正向提示词 (Positive Prompt)**。\n\n请严格按照以下格式输出，不要包含任何额外说明或对话内容：\nPositive Prompt: [这里是详细的图片生成正向提示词]\n\n请在扩展正向提示词时，确保其内容能够充分指导图像生成模型，使其生成高质量、符合预期的图像。考虑以下方面：\n1.  **主体细节**: 描述主体的具体特征、动作、表情、服装、材质、纹理等。\n2.  **环境/背景**: 场景的地点、时间、天气、光线（如柔和光、强对比光）、氛围、周围物体、景深等。\n3.  **风格/艺术性**: 艺术风格（如赛博朋克、印象派、写实、动漫风格、油画、水彩）、画质（如8K、超高清）、光影效果、色彩搭配、渲染方式（如3D渲染、数字绘画）。\n4.  **构图/视角**: 构图方式（如特写、全身照、广角、全景、对称构图）、视角（如俯视、仰视、平视）、景深。\n5.  **情绪/主题**: 图片想要表达的情绪、故事或主题。\n\n原始描述: '{{original_prompt}}'"
-  },
-  "fixed_positive_prefix": {
-    "description": "图片生成时强制添加的固定正向提示词前缀（仅在启用提示词增强时有效）",
-    "type": "string",
-    "hint": "这些提示词会始终添加到最终的正向提示词最前面，用于提高图片质量。",
-    "default": "high quality, masterpiece, best quality, photography, ultra highres, RAW photo, ultra-detailed, finely detailed, highres 8k wallpaper"
-  },
-  "default_negative_prompt": {
-    "description": "图片生成时默认添加的反向提示词（仅在启用提示词增强时有效）",
-    "type": "text",
-    "hint": "此内容会作为反向提示词添加到模型请求中，用于避免生成不希望出现的内容",
-    "default": "2boy, 2d, 2girl, 3d, 3d render, UI, aberrations, absent limbs, abstract, additional limbs, altered appendages, amputation, amputee, animate, anime, artstation, artwork, asymmetric, asymmetric ears, asymmetrical, autograph, bad anatomy, bad arms, bad composition, bad ears, bad eyes, bad face, bad hands, bad illustration, bad photo, bad photography, bad proportions, bad quality, banner, beyond the borders, black and white, blank background, body out of frame, boring background, branding, broken finger, broken hand, broken leg, broken wrist, cartoon, cg, cgi, childish, cinema 4d, cloned face, cloned head, collage, collapsed, collapsed eyeshadow, color aberration, combined appendages, conjoined, creative, cripple, cropped, cropped head, cross-eyed, cut off, deformed, deformed body features, deformed hands, deformed iris, deformed pupils, dehydrated, desiccated, deviant art, disconnected limb, disconnected limbs, disfigured, disgusting, dismembered, disproportionate, disproportioned, distorted, distortion, double face, draft, drawing, duplicate, duplicated features, elongated throat, error, extra arms, extra crus, extra digits, extra eyes, extra fingers, extra hands, extra legs, extra limbs, extra thigh, extra windows, fault, flaw, fused crus, fused face, fused feet, fused fingers, fused hands, fused thigh, geometry, grains, grainy, gross proportions, harsh lighting, hazy, horn, horror, huge eyes, identifying mark, improper scale, incorrect physiology, incorrect ratio, indistinct, jpeg, jpeg artifacts, kitsch, low quality, low res, low resolution, low saturation, macabre, malformed, malformed limbs, mark, misshapen, missing arms, missing fingers, missing hands, missing legs, mistake, morbid, mutilated, normal quality, octane render, off-screen, oil painting, out of focus, out of frame, out of frame double, outside the picture, overexposed, oversaturated, oversized eyes, painting, photoshop, picture frame, pixel, pixelated, poorly drawn face, poorly drawn feet, poorly drawn hands, poorly rendered hands, printed words, realistic photo, render, repellent, replicate, reproduce, revolting dimensions, rotten, script, shortened, sign, signature, sketch, split image, squint, storyboard, surreal, text, three crus, three feet, three hands, three legs, three thigh, tiling, too many fingers, trimmed, twisted, ugly, ugly eyes, ugly face, ugly fingers, unattractive, underexposed, unfocused, unnatural, unnatural pose, unreal, unreal engine, unrealistic, unrealistic skin texture, unsightly, username, video game, watermark, worst face, worst feet, worst quality, worst thigh, written language"
-  }
-}
+        logger.info("Gemini智能绘图插件已成功停用。") # 修正：移除末尾的反引号
