@@ -12,8 +12,7 @@ from astrbot.api.message_components import Image
 from astrbot.api.star import Context, Star, register
 
 
-@register("Gemini_Smart_Canvas", "沐沐沐倾丶", "Gemini智能绘图", "1.0.0",
-          description="基于Gemini模型，提供智能文生图和图生图功能，支持提示词自动扩展和固定反向提示词，旨在为用户提供高质量、富有创意的图像生成体验。")
+@register("Gemini_Smart_Canvas", "沐沐沐倾丶", "Gemini智能绘图", "1.0.0") # 移除 description 参数
 class GeminiImageGenerator(Star):
     """
     Gemini 图片生成与编辑插件。
