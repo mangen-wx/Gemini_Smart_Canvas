@@ -1,5 +1,5 @@
 name: Gemini_Smart_Canvas
 desc: 基于Gemini模型，提供智能文生图和图生图功能，支持提示词自动扩展和固定反向提示词，旨在为用户提供高质量、富有创意的图像生成体验。
 version: 1.0.0
-author: 沐沐沐倾丶
-# repo: 仓库地址无
+author: muqing
+repo: #仓库地址无
