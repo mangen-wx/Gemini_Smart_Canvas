@@ -296,16 +296,7 @@ class GeminiImageGenerator(Star):
         async for result in self._process_image_edit(event, final_prompt_for_model, image_path):
             yield result
 
-    @filter.llm_tool(name="edit_image",
-                     description="编辑现有图片。当你需要编辑图片时，请使用此工具。\n"
-                                 "你可以通过描述图片内容的修改来触发此工具，例如：\n"
-                                 "- \"把猫咪改成黑色\"\n"
-                                 "- \"肤色改为白色\"\n"
-                                 "- \"背景换一下\"\n"
-                                 "- \"添加一朵花\"\n"
-                                 "- \"让人物穿上红色的衣服\"\n"
-                                 "- \"把天空变成蓝色\"\n"
-                                 "- \"移除图片中的文字\"")
+    @filter.llm_tool(name="edit_image") # 移除 description 参数
     async def edit_image_tool(self, event: AstrMessageEvent, prompt: str) -> AsyncGenerator[Comp.BaseMessageComponent, None]:
         """
         LLM工具接口：编辑现有图片。
@@ -335,8 +326,7 @@ class GeminiImageGenerator(Star):
         async for result in self._process_image_edit(event, final_prompt_for_model, image_path):
             yield result
 
-    @filter.llm_tool(name="generate_image",
-                     description="根据文本描述生成图片，当你需要生成图片时请使用此工具。")
+    @filter.llm_tool(name="generate_image") # 移除 description 参数
     async def generate_image_tool(self, event: AstrMessageEvent, prompt: str) -> AsyncGenerator[Comp.BaseMessageComponent, None]:
         """
         LLM工具接口：根据文本描述生成图片。
@@ -414,7 +404,7 @@ class GeminiImageGenerator(Star):
         # 优化正则表达式，使其更简洁和通用
         # 匹配 Markdown, HTML, BBCode 或直接的图片URL
         match = re.search(
-            r'(?:!\[.*?\]\((https?://[^\s\)]+)\)|<img[^>]*src="\' [<sup>1</sup>](https?://[^"\'\s]+?)["\']|\img\ [<sup>2</sup>](https?://[^\[\]\s]+?)\[/img\]|(https?://\S+\.(?:png|jpg|jpeg|gif|webp)))',
+            r'(?:!\[.*?\]\((https?://[^\s\)]+)\)|<img[^>]*src=["\'](https?://[^"\'\s]+?)["\']|\[img\](https?://[^\[\]\s]+?)\[/img\]|(https?://\S+\.(?:png|jpg|jpeg|gif|webp)))',
             text_content,
             re.IGNORECASE
         )
@@ -516,5 +506,4 @@ class GeminiImageGenerator(Star):
                 logger.info(f"插件卸载完成：已清理临时目录 {self.save_dir}")
             except Exception as e:
                 logger.warning(f"清理临时目录失败: {e}")
-        logger.info("Gemini智能绘图插件已成功停用。")
-
+        logger.info("Gemini智能绘图插件已成功停用")
