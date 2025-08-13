@@ -48,10 +48,13 @@ class GeminiImageGenerator(Star):
         self.text_model_name = self.config.get("text_model_name", "gemini-2.5-flash")
         self.image_model_name = self.config.get("image_model_name", "gemini-2.0-flash-preview-image-generation")
 
+        # 新增：固定正向提示词前缀
+        self.fixed_positive_prefix = self.config.get("fixed_positive_prefix", "")
+
         # 新增：是否启用提示词增强功能
         self.enable_prompt_enhancement = self.config.get("enable_prompt_enhancement", True)
 
-        # 从配置中加载反向提示词和提示词扩展模板，不再硬编码默认值
+        # 从配置中加载反向提示词和提示词扩展模板
         self.default_negative_prompt = self.config.get("default_negative_prompt", "")
         self.prompt_expansion_template = self.config.get("prompt_expansion_template", "")
 
@@ -211,27 +214,36 @@ class GeminiImageGenerator(Star):
 
         save_path = None
         try:
-            final_prompt_for_model = prompt
+            final_positive_prompt = prompt
+            prompt_to_send_to_model = ""
+
             if self.enable_prompt_enhancement:
                 # 尝试扩展提示词
                 expanded_positive_prompt = await self._expand_prompt_with_gemini(prompt)
                 if expanded_positive_prompt:
-                    final_prompt_for_model = expanded_positive_prompt
+                    final_positive_prompt = expanded_positive_prompt
                     logger.info(f"原始提示词: '{prompt}'")
                     logger.info(f"扩展后正向提示词: '{expanded_positive_prompt}'")
                 else:
                     logger.warning("提示词扩展服务异常，将使用原始描述进行图片生成。")
                 
+                # 强制添加固定正向提示词前缀
+                if self.fixed_positive_prefix:
+                    final_positive_prompt = f"{self.fixed_positive_prefix}, {final_positive_prompt}"
+                    logger.info(f"已添加固定正向提示词前缀: '{self.fixed_positive_prefix}'")
+
                 # 结合反向提示词
+                prompt_to_send_to_model = final_positive_prompt
                 if self.default_negative_prompt:
-                    final_prompt_for_model += f", avoid {self.default_negative_prompt}"
+                    prompt_to_send_to_model += f", avoid {self.default_negative_prompt}"
             else:
-                logger.info("提示词增强功能已禁用，将直接使用用户原始提示词。")
+                logger.info("提示词增强功能已禁用，将直接使用用户原始提示词，不添加任何额外提示词。")
+                prompt_to_send_to_model = prompt # 禁用增强时，只用原始提示词
             
-            logger.info(f"发送给图片模型的最终提示词: '{final_prompt_for_model}'")
+            logger.info(f"发送给图片模型的最终提示词: '{prompt_to_send_to_model}'")
             yield event.plain_result("正在生成图片，请稍候...")
 
-            image_data = await self._generate_image_with_retry(final_prompt_for_model)
+            image_data = await self._generate_image_with_retry(prompt_to_send_to_model)
 
             if not image_data:
                 logger.error("图片生成失败：API密钥可能无效或已达到使用限制。")
@@ -264,7 +276,7 @@ class GeminiImageGenerator(Star):
     async def edit_image(self, event: AstrMessageEvent, prompt: str) -> AsyncGenerator[Comp.MessageComponent, None]:
         """
         仅支持：引用图片后发送指令编辑图片。
-        编辑时根据配置决定是否附加反向提示词。
+        编辑时只使用用户提供的提示词，不进行任何增强。
         """
         if not self.api_keys:
             yield event.plain_result("错误：插件未配置有效的Gemini API密钥。")
@@ -275,12 +287,9 @@ class GeminiImageGenerator(Star):
             yield event.plain_result("未检测到引用的图片。请长按图片选择“回复”后，再发送编辑指令。")
             return
 
+        # 图片编辑不进行任何增强，只使用用户原始提示词
         final_prompt_for_model = prompt
-        if self.enable_prompt_enhancement and self.default_negative_prompt:
-            final_prompt_for_model += f", avoid {self.default_negative_prompt}"
-            logger.info("提示词增强功能已启用，编辑时将添加反向提示词。")
-        else:
-            logger.info("提示词增强功能已禁用或未配置反向提示词，编辑时将直接使用用户原始提示词。")
+        logger.info("图片编辑功能不进行提示词增强，将直接使用用户原始提示词。")
 
         logger.info(f"发送给图片编辑模型的最终提示词: '{final_prompt_for_model}'")
         yield event.plain_result(f"正在编辑图片，请稍候...")
@@ -317,12 +326,9 @@ class GeminiImageGenerator(Star):
             yield event.plain_result("未检测到引用的图片。请长按图片选择“回复”后，再发送编辑指令。")
             return
 
+        # 图片编辑不进行任何增强，只使用用户原始提示词
         final_prompt_for_model = prompt
-        if self.enable_prompt_enhancement and self.default_negative_prompt:
-            final_prompt_for_model += f", avoid {self.default_negative_prompt}"
-            logger.info("提示词增强功能已启用，编辑时将添加反向提示词。")
-        else:
-            logger.info("提示词增强功能已禁用或未配置反向提示词，编辑时将直接使用用户原始提示词。")
+        logger.info("图片编辑功能不进行提示词增强，将直接使用用户原始提示词。")
 
         logger.info(f"发送给图片编辑模型的最终提示词: '{final_prompt_for_model}'")
         yield event.plain_result(f"正在编辑图片，请稍候...")
