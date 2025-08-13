@@ -1,0 +1,42 @@
+{
+  "gemini_api_keys": {
+    "description": "Gemini API 密钥列表（从 Google AI Studio 获取）",
+    "type": "list",
+    "hint": "前往 https://aistudio.google.com/ 生成 API Key，支持填写多个密钥以提高可用性",
+    "obvious_hint": true,
+    "items": {
+      "type": "string",
+      "description": "API 密钥"
+    },
+    "default": []
+  },
+  "api_base_url": {
+    "description": "Gemini API 基础 URL（可选，默认使用官方地址）",
+    "type": "string",
+    "hint": "如果需要自定义 API 地址，请填写完整 URL",
+    "default": "https://generativelanguage.googleapis.com"
+  },
+  "text_model_name": {
+    "description": "用于提示词扩展的文本生成模型名称",
+    "type": "string",
+    "default": "gemini-2.5-flash"
+  },
+  "image_model_name": {
+    "description": "用于图片生成和编辑的图像模型名称",
+    "type": "string",
+    "hint": "例如：gemini-2.0-flash-preview-image-generation",
+    "default": "gemini-2.0-flash-preview-image-generation"
+  },
+  "default_negative_prompt": {
+    "description": "图片生成时默认添加的反向提示词",
+    "type": "text",
+    "hint": "此内容会作为反向提示词添加到模型请求中，用于避免生成不希望出现的内容",
+    "default": "worst quality, normal quality, low quality, low res, blurry, distortion, text, watermark, logo, banner, extra digits, cropped, jpeg artifacts, signature, username, error, sketch, duplicate, ugly, monochrome, horror, geometry, mutation, disgusting, bad anatomy, bad proportions, bad quality, deformed, disconnected limbs, out of frame, out of focus, dehydrated, disfigured, extra arms, extra limbs, extra hands, fused fingers, gross proportions, long neck, jpeg, malformed limbs, mutated, mutated hands, mutated limbs, missing arms, missing fingers, picture frame, poorly drawn hands, poorly drawn face, collage, pixel, pixelated, grainy, color aberration, amputee, autograph, bad illustration, beyond the borders, blank background, body out of frame, boring background, branding, cut off, dismembered, disproportioned, distorted, draft, duplicated features, extra fingers, extra legs, fault, flaw, grains, hazy, identifying mark, improper scale, incorrect physiology, incorrect ratio, indistinct, kitsch, low resolution, macabre, malformed, mark, misshapen, missing hands, missing legs, mistake, morbid, mutilated, off-screen, outside the picture, poorly drawn feet, printed words, render, repellent, replicate, reproduce, revolting dimensions, script, shortened, sign, split image, squint, storyboard, tiling, trimmed, unfocused, unattractive, unnatural pose, unreal engine, unsightly, written language, bad hands, three hands, three legs, bad arms, missing legs, missing arms, bad face, fused face, cloned face, worst face, out of frame double, three crus, extra crus, fused crus, worst feet, three feet, fused feet, fused thigh, three thigh, extra thigh, worst thigh, horn, realistic photo, extra eyes, huge eyes, 2girl, 2boy, amputation, disconnected limbs, poorly rendered hands, bad composition, cartoon, cg, 3d, unreal, animate, cgi, artwork, illustration, 3d render, cinema 4d, artstation, octane render, mutated body parts, painting, oil painting, 2d, sketch, bad photography, bad photo, deviant art, aberrations, abstract, anime, black and white, collapsed, conjoined, creative, drawing, extra windows, harsh lighting, low saturation, multiple levels, overexposed, oversaturated, photoshop, rotten, surreal, twisted, UI, underexposed, unnatural, unrealistic, video game, deformed body features, asymmetrical, unrealistic skin texture, double face, fused hands, too many fingers, deformed hands, ugly eyes, oversized eyes, imperfect eyes, deformed pupils, deformed iris, cross-eyed, asymmetric ears, broken wrist, additional limbs, altered appendages, broken finger, elongated throat, broken hand, combined appendages, broken leg, copied visage, absent limbs, childish, cropped head, cloned head, desiccated, dismembered, disproportionate, cripple"
+  },
+  "prompt_expansion_template": {
+    "description": "用于指导文本模型扩展正向提示词的模板",
+    "type": "text",
+    "hint": "使用 {{original_prompt}} 作为用户原始描述的占位符。此模板将发送给文本模型以生成详细的正向提示词。",
+    "default": "你是一个专业的图片生成提示词扩展助手。请根据用户提供的简短描述，将其扩展为详细、富有创意且包含丰富细节的图片生成**正向提示词 (Positive Prompt)**。\n\n请严格按照以下格式输出，不要包含任何额外说明或对话内容：\nPositive Prompt: [这里是详细的图片生成正向提示词]\n\n请在扩展正向提示词时，确保其内容能够充分指导图像生成模型，使其生成高质量、符合预期的图像。考虑以下方面：\n1.  **主体细节**: 描述主体的具体特征、动作、表情、服装、材质、纹理等。\n2.  **环境/背景**: 场景的地点、时间、天气、光线（如柔和光、强对比光）、氛围、周围物体、景深等。\n3.  **风格/艺术性**: 艺术风格（如赛博朋克、印象派、写实、动漫风格、油画、水彩）、画质（如8K、超高清）、光影效果、色彩搭配、渲染方式（如3D渲染、数字绘画）。\n4.  **构图/视角**: 构图方式（如特写、全身照、广角、全景、对称构图）、视角（如俯视、仰视、平视）、景深。\n5.  **情绪/主题**: 图片想要表达的情绪、故事或主题。\n\n原始描述: '{{original_prompt}}'"
+  }
+}
